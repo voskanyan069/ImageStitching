@@ -1,0 +1,4 @@
+build/
+*.jpg
+output/
+res/
