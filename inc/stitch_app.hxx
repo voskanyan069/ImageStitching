@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <fstream>
 
 namespace boost { namespace filesystem {
 
@@ -43,15 +44,21 @@ private:
     void stitch(ImageNames& inputFiles);
     void stitchImages(ImageNames& inputFiles);
     void stitch2Images(const std::string& src1, const std::string& src2);
+    void initLogging();
+    void checkForOutputDir();
+    void loadFiles(ImageNames& inputFiles);
+    void closeLogfile();
 
 private:
-    bool m_bLogging;
+    bool m_bQuiet;
     bool m_bRecurseSearching;
     int m_keypointsCount;
     float m_distanceRatio;
     float m_ransacValue;
     std::string m_inputPath;
     std::string m_outputPath;
+    std::string m_logfilePath;
+    std::ofstream* m_logfileStream;
     Stitcher* m_stitcher;
 };
 

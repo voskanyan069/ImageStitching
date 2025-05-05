@@ -6,6 +6,7 @@
 
 #include "image_stitching.hxx"
 #include "image_processing.hxx"
+#include "logging.hxx"
 
 namespace fs = boost::filesystem;
 
@@ -26,26 +27,25 @@ void Stitcher::stitch(const ImageProcessing& proc, const cv::Mat& img1,
     KeyPoints img2Kpts;
     cv::Mat homography;
     Point2fVec allCorners;
-    std::cout<< "Image1:Size: " << img1.cols << "x" << img1.rows << std::endl;
-    std::cout<< "Image2:Size: " << img2.cols << "x" << img2.rows << std::endl;
+    Logging::LogInfo("Image1:Size: %dx%d", img1.cols, img1.rows);
+    Logging::LogInfo("Image2:Size: %dx%d", img2.cols, img2.rows);
     proc.FindMatches(gray1, gray2, matches, img1Kpts, img2Kpts,
             m_distanceRatio, m_keypointsCount);
-    std::cout << "KeyPoints1:Size: " << img1Kpts.size() << std::endl;
-    std::cout << "KeyPoints1:Size: " << img2Kpts.size() << std::endl;
-    std::cout << "Matches:Size: " << matches.size() << std::endl;
+    Logging::LogInfo("KeyPoints1:Size: %d", img1Kpts.size());
+    Logging::LogInfo("KeyPoints2:Size: %d", img2Kpts.size());
+    Logging::LogInfo("Matches:Size: %d", matches.size());
     proc.TransformHomography(img1Kpts, img2Kpts, matches,
             homography, m_ransacValue);
     proc.TransformCorners(img1, img2, homography, allCorners);
     proc.WarpImages(img1, img2, homography, allCorners, result);
-    std::cout << "Result:Size: " << result.cols << "x" <<
-        result.rows << std::endl;
+    Logging::LogInfo("Result:Size: %dx%d", result.cols, result.rows);
 }
 
 void Stitcher::Stitch2Images(cv::Mat* img1, cv::Mat* img2, cv::Mat* result)
 {
     if (nullptr == img1 || nullptr == img2)
     {
-        std::cerr << "Image file is empty" << std::endl;
+        Logging::LogError("Image file is empty");
     }
     ImageProcessing proc;
     cv::Mat gray1;
@@ -72,7 +72,7 @@ void Stitcher::StitchToLastResult(const std::string& newImg, cv::Mat* result)
 {
     cv::Mat img = cv::imread(newImg);
     StitchToLastResult(&img, result);
-    std::cout << "Stitch To Last: " << newImg << std::endl;
+    Logging::LogInfo("Stitch To Last: %s", newImg.c_str());
 }
 
 void Stitcher::SaveFile(const std::string& dir, const std::string& file,
@@ -80,13 +80,13 @@ void Stitcher::SaveFile(const std::string& dir, const std::string& file,
 {
     if (nullptr == result)
     {
-        std::cerr << "Result file is empty" << std::endl;
+        Logging::LogError("Result file is empty");
         return;
     }
     fs::path outputPath(dir);
     fs::path path = outputPath / file;
     m_lastStitched = result;
-    std::cout << "Saving result file to: " << path.string() << std::endl;
+    Logging::LogInfo("Saving result file to: %s", path.string().c_str());
     cv::imwrite(path.string(), *(result));
-    std::cout << "Result file is saved: " << path.string() << std::endl;
+    Logging::LogInfo("Result file is saved: %s", path.string().c_str());
 }

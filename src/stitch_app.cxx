@@ -6,16 +6,19 @@
 
 #include "stitch_app.hxx"
 #include "image_stitching.hxx"
+#include "logging.hxx"
 
 StitchApp::StitchApp()
-    : m_bLogging(false)
+    : m_bQuiet(false)
     , m_bRecurseSearching(false)
     , m_keypointsCount(0)
     , m_distanceRatio(0)
     , m_ransacValue(0)
     , m_inputPath("")
     , m_outputPath("")
+    , m_logfilePath("")
     , m_stitcher(nullptr)
+    , m_logfileStream(nullptr)
 {
 }
 
@@ -25,12 +28,16 @@ StitchApp::~StitchApp()
     {
         delete m_stitcher;
     }
+    closeLogfile();
 }
 
 void StitchApp::createArgList(po::options_description& desc)
 {
     desc.add_options()
         ("help,h", "Produce help message")
+        ("quiet,q", "Quiet (No output)")
+        ("logfile,l", po::value<std::string>()->default_value(""),
+         "Redirect output to the logfile")
         ("input,i", po::value<std::string>()->required(),
          "Source image files directory path")
         ("output,o", po::value<std::string>()->required(),
@@ -40,7 +47,6 @@ void StitchApp::createArgList(po::options_description& desc)
          "Distance filter ratio")
         ("RANSAC,R", po::value<float>()->default_value(1.5), "RANSAC value")
         ("recurse,r", "Search for images recursively");
-        ("logging,l", "Enable logging");
 }
 
 bool StitchApp::storeArguments(int argc, char** argv,
@@ -53,9 +59,9 @@ bool StitchApp::storeArguments(int argc, char** argv,
         std::cout << desc << std::endl;
         return false;
     }
-    if (vm.count("logging"))
+    if (vm.count("quiet"))
     {
-        m_bLogging = true;
+        m_bQuiet = true;
     }
     if (vm.count("recurse"))
     {
@@ -64,6 +70,7 @@ bool StitchApp::storeArguments(int argc, char** argv,
     po::notify(vm);
     m_inputPath = vm["input"].as<std::string>();
     m_outputPath = vm["output"].as<std::string>();
+    m_logfilePath = vm["logfile"].as<std::string>();
     m_keypointsCount = vm["keypoints"].as<int>();
     m_distanceRatio = vm["ratio"].as<float>();
     m_ransacValue = vm["RANSAC"].as<float>();
@@ -84,7 +91,7 @@ int StitchApp::ParseArgs(int argc, char** argv)
     }
     catch ( const po::error& e )
     {
-        std::cerr << "Error parsing arguments: " << e.what() << std::endl;
+        Logging::LogError("Failed to parse arguments: %s", e.what());
         std::cout << desc << std::endl;
         return -1;
     }
@@ -173,7 +180,7 @@ void StitchApp::stitch(ImageNames& inputFiles)
 {
     if (inputFiles.size() < 2)
     {
-        std::cerr << "Images list is empty" << std::endl;
+        Logging::LogError("Images list is empty");
         exit(-1);
     }
     if (inputFiles.size() == 2)
@@ -184,15 +191,87 @@ void StitchApp::stitch(ImageNames& inputFiles)
     stitchImages(inputFiles);
 }
 
-int StitchApp::Exec()
+void StitchApp::initLogging()
 {
-    m_stitcher = new Stitcher(m_distanceRatio, m_keypointsCount, m_ransacValue);
-    ImageNames inputFiles;
+    if ( !m_logfilePath.empty() )
+    {
+        if ( fs::exists(m_logfilePath) )
+        {
+            if ( !fs::is_directory(m_logfilePath) )
+            {
+                Logging::LogWarn("The logfile aleady exists (overwriting)");
+            }
+            else
+            {
+                Logging::LogError("In your logfile path was located directory");
+                exit(-2);
+            }
+        }
+        m_logfileStream = new std::ofstream(m_logfilePath);
+        if ( m_logfileStream->is_open() )
+        {
+            Logging::SetOutputStream(m_logfileStream);
+        }
+    }
+}
+
+void StitchApp::checkForOutputDir()
+{
+    if ( fs::exists(m_outputPath) )
+    {
+        if ( !fs::is_directory(m_outputPath) )
+        {
+            Logging::LogError("Output path is not a directory: %s",
+                    m_outputPath.c_str());
+            exit(-3);
+        }
+    }
+    else
+    {
+        Logging::LogError("Output path does not exists: %s",
+                m_outputPath.c_str());
+        exit(-4);
+    }
+}
+
+void StitchApp::loadFiles(ImageNames& inputFiles)
+{
     if ( 0 != loadSourceFiles(inputFiles) )
     {
-        std::cout << "Invalid directory path: " + m_inputPath << std::endl;
+        Logging::LogError("Invalid input path: %s", m_inputPath.c_str());
+        exit(-5);
     }
     sortFilenames(inputFiles);
+}
+
+void StitchApp::closeLogfile()
+{
+    if ( nullptr != m_logfileStream )
+    {
+        if ( m_logfileStream->is_open() )
+        {
+            m_logfileStream->close();
+        }
+        delete m_logfileStream;
+        Logging::UnsetOutputStream();
+    }
+}
+
+int StitchApp::Exec()
+{
+    int ec = 0;
+    if ( m_bQuiet )
+    {
+        Logging::DisableLogging();
+    }
+    else
+    {
+        initLogging();
+    }
+    m_stitcher = new Stitcher(m_distanceRatio, m_keypointsCount, m_ransacValue);
+    checkForOutputDir();
+    ImageNames inputFiles;
+    loadFiles(inputFiles);
     stitch(inputFiles);
     return 0;
 }
